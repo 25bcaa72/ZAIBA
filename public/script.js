@@ -1,7 +1,16 @@
-// API base URL - FINAL FIX: Always use relative paths for both local and production
+// API base URL - FINAL FIX: Use local backend for dev/live-server, relative for production
 let API_URL = '';
 
-console.log('API_URL set to:', API_URL); // Debug: should be empty string
+if (
+  window.location.hostname === 'localhost' ||
+  window.location.hostname === '127.0.0.1' ||
+  window.location.port === '5500' ||
+  window.location.port === '3000'
+) {
+  API_URL = 'http://localhost:5000';
+}
+
+console.log('API_URL set to:', API_URL); // Debug: should be http://localhost:5000 for local dev, empty for deploy
 
 const fallbackSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="#f0f0f0"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#555" font-size="24">No Image</text></svg>`;
 const fallbackImage = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(fallbackSvg)}`;
