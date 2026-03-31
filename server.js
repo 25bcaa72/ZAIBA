@@ -1,4 +1,5 @@
 const express = require('express');
+const { MongoClient } = require('mongodb');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
@@ -13,72 +14,33 @@ app.use(bodyParser.json());
 // Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Database connection
-const { Pool } = require('pg');
-const dns = require('dns').promises;
+// MongoDB connection
+const MONGODB_URI = process.env.MONGODB_URI;
+let client = null;
+let db = null;
 
-const RETRY_MAX = 5;
-const RETRY_DELAY_MS = 2000;
-
-async function resolveHost(hostname) {
-  try {
-    const addresses = await dns.resolve4(hostname);
-    return addresses[0];
-  } catch (err) {
-    const resolver = new dns.Resolver();
-    resolver.setServers(['8.8.8.8', '1.1.1.1']);
-    const addresses = await resolver.resolve4(hostname);
-    return addresses[0];
-  }
-}
-
-async function createPool() {
-  const origUrl = process.env.DATABASE_URL;
-  
-  if (!origUrl) {
-    console.error('⚠️ DATABASE_URL environment variable not set!');
+async function connectToMongoDB() {
+  if (!MONGODB_URI) {
+    console.error('⚠️ MONGODB_URI environment variable not set!');
     console.error('Set it in Render dashboard -> Environment variables');
     return null;
   }
 
-  const parsedUrl = new URL(origUrl);
-  const hostname = parsedUrl.hostname;
-
-  for (let attempt = 1; attempt <= RETRY_MAX; attempt++) {
-    try {
-      console.log(`[${attempt}/${RETRY_MAX}] Connecting to NeonDB...`);
-      const resolvedIp = await resolveHost(hostname);
-      const pool = new Pool({
-        host: resolvedIp,
-        port: parsedUrl.port || 5432,
-        database: parsedUrl.pathname.replace('/', ''),
-        user: parsedUrl.username,
-        password: parsedUrl.password,
-        ssl: {
-          rejectUnauthorized: false,
-          servername: hostname,
-          checkServerIdentity: () => undefined
-        },
-        connectionTimeoutMillis: 8000,
-        query_timeout: 8000
-      });
-      await pool.query('SELECT 1');
-      console.log('✅ Database connected successfully');
-      return pool;
-    } catch (error) {
-      console.error(`Connection attempt ${attempt} failed:`, error.message);
-      if (attempt < RETRY_MAX) {
-        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
-      }
-    }
+  try {
+    console.log('Connecting to MongoDB Atlas...');
+    client = new MongoClient(MONGODB_URI);
+    await client.connect();
+    db = client.db('portfolio'); // Database name
+    console.log('✅ Connected to MongoDB Atlas successfully');
+    return db;
+  } catch (error) {
+    console.error('❌ Failed to connect to MongoDB:', error.message);
+    return null;
   }
-
-  console.error('❌ Could not connect to NeonDB');
-  return null;
 }
 
-let pool = null;
-createPool().then((p) => { pool = p; });
+// Initialize connection
+connectToMongoDB();
 
 // Routes
 
@@ -111,15 +73,15 @@ app.get('/api/portfolio', async (req, res) => {
     }
   ];
 
-  if (!pool) {
+  if (!db) {
     console.log('⚠️ Database not connected - returning fallback data');
     return res.json(fallbackData);
   }
 
   try {
-    const result = await pool.query('SELECT * FROM portfolio_items ORDER BY created_at DESC');
-    // If database has data, return it; otherwise fallback
-    return res.json(result.rows.length > 0 ? result.rows : fallbackData);
+    const collection = db.collection('portfolio_items');
+    const items = await collection.find({}).sort({ created_at: -1 }).toArray();
+    return res.json(items.length > 0 ? items : fallbackData);
   } catch (error) {
     console.error('Error fetching portfolio items:', error);
     return res.json(fallbackData);
@@ -130,11 +92,12 @@ app.get('/api/portfolio', async (req, res) => {
 app.get('/api/portfolio/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await pool.query('SELECT * FROM portfolio_items WHERE id = $1', [id]);
-    if (result.rows.length === 0) {
+    const collection = db.collection('portfolio_items');
+    const item = await collection.findOne({ _id: id });
+    if (!item) {
       return res.status(404).json({ error: 'Portfolio item not found' });
     }
-    res.json(result.rows[0]);
+    res.json(item);
   } catch (error) {
     console.error('Error fetching portfolio item:', error);
     res.status(500).json({ error: 'Failed to fetch portfolio item' });
@@ -146,15 +109,20 @@ app.post('/api/portfolio', async (req, res) => {
   try {
     const { title, description, image_url, project_url, technologies } = req.body;
     
-    if (!pool) {
+    if (!db) {
       return res.status(201).json({ success: true, message: 'Portfolio item added (pending database sync)' });
     }
 
-    const result = await pool.query(
-      'INSERT INTO portfolio_items (title, description, image_url, project_url, technologies) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [title, description, image_url, project_url, technologies]
-    );
-    res.status(201).json(result.rows[0]);
+    const collection = db.collection('portfolio_items');
+    const result = await collection.insertOne({
+      title,
+      description,
+      image_url,
+      project_url,
+      technologies,
+      created_at: new Date()
+    });
+    res.status(201).json({ _id: result.insertedId, ...req.body, created_at: new Date() });
   } catch (error) {
     console.error('Error creating portfolio item:', error);
     res.status(201).json({ success: true, message: 'Portfolio item added (pending database sync)' });
@@ -163,13 +131,14 @@ app.post('/api/portfolio', async (req, res) => {
 
 // Get contact messages
 app.get('/api/messages', async (req, res) => {
-  if (!pool) {
+  if (!db) {
     return res.json([]);
   }
 
   try {
-    const result = await pool.query('SELECT * FROM contact_messages ORDER BY created_at DESC');
-    res.json(result.rows);
+    const collection = db.collection('contact_messages');
+    const messages = await collection.find({}).sort({ created_at: -1 }).toArray();
+    res.json(messages);
   } catch (error) {
     console.error('Error fetching messages:', error);
     res.json([]);
@@ -185,18 +154,26 @@ app.post('/api/messages', async (req, res) => {
       return res.status(400).json({ error: 'All fields are required' });
     }
 
-    const result = await pool.query(
-      'INSERT INTO contact_messages (name, email, message) VALUES ($1, $2, $3) RETURNING *',
-      [name, email, message]
-    );
+    if (!db) {
+      return res.status(201).json({
+        success: true,
+        message: 'Message received! (Database not yet configured - check MONGODB_SETUP.md)'
+      });
+    }
+
+    const collection = db.collection('contact_messages');
+    await collection.insertOne({
+      name,
+      email,
+      message,
+      created_at: new Date()
+    });
     res.status(201).json({ success: true, message: 'Message sent successfully' });
   } catch (error) {
     console.error('Error creating message:', error);
-    // Return success even if database fails - for demo purposes
     res.status(201).json({
       success: true,
-      message: 'Message received! (Database not yet configured - check NEONDB_SETUP.md)',
-      note: 'Database connection pending - run SQL in NeonDB console'
+      message: 'Message received! (Database not yet configured - check MONGODB_SETUP.md)'
     });
   }
 });
@@ -208,14 +185,14 @@ app.get('/api/health', (req, res) => {
 
 // DB status check (for reviewer verification)
 app.get('/api/db-status', async (req, res) => {
-  if (!pool) {
-    return res.json({ connected: false, message: 'Database pool not initialized' });
+  if (!db) {
+    return res.json({ connected: false, message: 'Database not initialized' });
   }
 
   try {
-    const portfolio = await pool.query('SELECT COUNT(*)::int AS portfolio_count FROM portfolio_items');
-    const messages = await pool.query('SELECT COUNT(*)::int AS messages_count FROM contact_messages');
-    res.json({ connected: true, portfolio_count: portfolio.rows[0].portfolio_count, messages_count: messages.rows[0].messages_count });
+    const portfolioCount = await db.collection('portfolio_items').countDocuments();
+    const messagesCount = await db.collection('contact_messages').countDocuments();
+    res.json({ connected: true, portfolio_count: portfolioCount, messages_count: messagesCount });
   } catch (error) {
     console.error('DB status error:', error);
     res.status(500).json({ connected: false, error: error.message });
