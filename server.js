@@ -28,19 +28,42 @@ async function connectToMongoDB() {
 
   try {
     console.log('Connecting to MongoDB Atlas...');
-    client = new MongoClient(MONGODB_URI);
+    client = new MongoClient(MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000,
+      maxPoolSize: 10,
+      retryWrites: true,
+      w: 'majority'
+    });
+    
     await client.connect();
     db = client.db('portfolio'); // Database name
     console.log('✅ Connected to MongoDB Atlas successfully');
+    
+    // Test the connection with a ping
+    await db.admin().ping();
+    console.log('✅ MongoDB connection verified');
+    
     return db;
   } catch (error) {
     console.error('❌ Failed to connect to MongoDB:', error.message);
+    console.error('🔧 Check your MONGODB_URI environment variable');
+    console.error('🔧 Ensure IP access is configured in MongoDB Atlas');
     return null;
   }
 }
 
-// Initialize connection
-connectToMongoDB();
+// Initialize connection and wait for it before starting server
+async function startServer() {
+  await connectToMongoDB();
+  
+  // Start server
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
+
+startServer().catch(console.error);
 
 // Routes
 
@@ -81,9 +104,19 @@ app.get('/api/portfolio', async (req, res) => {
   try {
     const collection = db.collection('portfolio_items');
     const items = await collection.find({}).sort({ created_at: -1 }).toArray();
-    return res.json(items.length > 0 ? items : fallbackData);
+    
+    console.log(`📊 API Request: Found ${items.length} portfolio items in database`);
+    
+    if (items.length > 0) {
+      console.log('✅ Returning real database data');
+      return res.json(items);
+    } else {
+      console.log('⚠️ No items in database, returning fallback data');
+      return res.json(fallbackData);
+    }
   } catch (error) {
-    console.error('Error fetching portfolio items:', error);
+    console.error('❌ Error fetching portfolio items:', error);
+    console.log('⚠️ Returning fallback data due to error');
     return res.json(fallbackData);
   }
 });
@@ -92,8 +125,22 @@ app.get('/api/portfolio', async (req, res) => {
 app.get('/api/portfolio/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    
+    if (!db) {
+      return res.status(503).json({ error: 'Database not connected' });
+    }
+    
     const collection = db.collection('portfolio_items');
-    const item = await collection.findOne({ _id: id });
+    const { ObjectId } = require('mongodb');
+    
+    let item;
+    try {
+      item = await collection.findOne({ _id: new ObjectId(id) });
+    } catch {
+      // If id is not a valid ObjectId, try as string
+      item = await collection.findOne({ _id: id });
+    }
+    
     if (!item) {
       return res.status(404).json({ error: 'Portfolio item not found' });
     }
@@ -202,10 +249,4 @@ app.get('/api/db-status', async (req, res) => {
 // Serve index.html for all other routes
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// Start server
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
 });
