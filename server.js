@@ -206,6 +206,22 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK' });
 });
 
+// DB status check (for reviewer verification)
+app.get('/api/db-status', async (req, res) => {
+  if (!pool) {
+    return res.json({ connected: false, message: 'Database pool not initialized' });
+  }
+
+  try {
+    const portfolio = await pool.query('SELECT COUNT(*)::int AS portfolio_count FROM portfolio_items');
+    const messages = await pool.query('SELECT COUNT(*)::int AS messages_count FROM contact_messages');
+    res.json({ connected: true, portfolio_count: portfolio.rows[0].portfolio_count, messages_count: messages.rows[0].messages_count });
+  } catch (error) {
+    console.error('DB status error:', error);
+    res.status(500).json({ connected: false, error: error.message });
+  }
+});
+
 // Serve index.html for all other routes
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
