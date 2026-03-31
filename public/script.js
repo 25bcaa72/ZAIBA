@@ -1,18 +1,14 @@
-// API base URL (use backend at localhost:5000 during development)
-// If this is deployed, will use same origin by default.
-const isDevOrigin = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-const localApiPort = 5000;
+// API base URL - Use relative paths for both local and production
+// In production (Render), this becomes: https://your-app.onrender.com/api/...
+// In local dev (localhost:5000), this becomes: http://localhost:5000/api/...
+const API_URL = '';
 
-let API_URL;
-if (isDevOrigin) {
-  API_URL = `http://localhost:${localApiPort}`;
-} else {
-  API_URL = window.location.origin;
-}
-
-// If accidentally hitting Live Server 5500, redirect to backend API too:
-if (window.location.port === '5500') {
-  API_URL = `http://localhost:${localApiPort}`;
+// Only use localhost:5000 if explicitly running locally
+if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+  if (window.location.port === '5500') {
+    // Live Server case - redirect to backend
+    // Uncomment if needed: API_URL = 'http://localhost:5000';
+  }
 }
 
 const fallbackSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="#f0f0f0"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#555" font-size="24">No Image</text></svg>`;
