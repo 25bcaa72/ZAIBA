@@ -17,8 +17,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 const { Pool } = require('pg');
 const dns = require('dns').promises;
 
-const RETRY_MAX = 10;
-const RETRY_DELAY_MS = 5000;
+const RETRY_MAX = 5;
+const RETRY_DELAY_MS = 2000;
 
 async function resolveHost(hostname) {
   try {
@@ -34,8 +34,11 @@ async function resolveHost(hostname) {
 
 async function createPool() {
   const origUrl = process.env.DATABASE_URL;
+  
   if (!origUrl) {
-    throw new Error('DATABASE_URL is not set');
+    console.error('⚠️ DATABASE_URL environment variable not set!');
+    console.error('Set it in Render dashboard -> Environment variables');
+    return null;
   }
 
   const parsedUrl = new URL(origUrl);
@@ -43,7 +46,7 @@ async function createPool() {
 
   for (let attempt = 1; attempt <= RETRY_MAX; attempt++) {
     try {
-      console.log(`Database connect attempt ${attempt}/${RETRY_MAX} for ${hostname}`);
+      console.log(`[${attempt}/${RETRY_MAX}] Connecting to NeonDB...`);
       const resolvedIp = await resolveHost(hostname);
       const pool = new Pool({
         host: resolvedIp,
@@ -56,32 +59,26 @@ async function createPool() {
           servername: hostname,
           checkServerIdentity: () => undefined
         },
-        connectionTimeoutMillis: 10000,
-        query_timeout: 10000
+        connectionTimeoutMillis: 8000,
+        query_timeout: 8000
       });
       await pool.query('SELECT 1');
-      console.log('✅ Database connection established');
+      console.log('✅ Database connected successfully');
       return pool;
     } catch (error) {
-      console.error(`Database connection attempt ${attempt} failed:`, error.message);
+      console.error(`Connection attempt ${attempt} failed:`, error.message);
       if (attempt < RETRY_MAX) {
         await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
       }
     }
   }
 
-  throw new Error('Could not connect to NeonDB after multiple attempts');
+  console.error('❌ Could not connect to NeonDB');
+  return null;
 }
 
-let pool;
-createPool()
-  .then((p) => {
-    pool = p;
-  })
-  .catch((err) => {
-    console.error('Unable to initialize database pool:', err.message);
-    pool = null;
-  });
+let pool = null;
+createPool().then((p) => { pool = p; });
 
 // Routes
 
