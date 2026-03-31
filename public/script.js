@@ -1,17 +1,7 @@
-// API base URL - PERMANENT FIX
-// For local development: ALWAYS use http://localhost:5000
-// For production (Render): uses empty string for relative paths
+// API base URL - FINAL FIX: Always use relative paths for both local and production
 let API_URL = '';
 
-// If running locally, use explicit backend URL
-if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-  API_URL = 'http://localhost:5000';
-}
-
-// If on Live Server port 5500, redirect to backend
-if (window.location.port === '5500' || window.location.port === '3000') {
-  API_URL = 'http://localhost:5000';
-}
+console.log('API_URL set to:', API_URL); // Debug: should be empty string
 
 const fallbackSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="#f0f0f0"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#555" font-size="24">No Image</text></svg>`;
 const fallbackImage = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(fallbackSvg)}`;
@@ -34,9 +24,19 @@ function safeImageUrl(url) {
 
 // Load portfolio items
 async function loadPortfolioItems() {
+  const fetchUrl = `${API_URL}/api/portfolio`;
+  console.log('Fetching portfolio from:', fetchUrl); // Debug: should be /api/portfolio
+
   try {
-    const response = await fetch(`${API_URL}/api/portfolio`);
+    const response = await fetch(fetchUrl);
+    console.log('Fetch response status:', response.status); // Debug: should be 200
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
     const portfolioItems = await response.json();
+    console.log('Portfolio items received:', portfolioItems.length); // Debug: should be >0
     
     const portfolioGrid = document.getElementById('portfolioGrid');
     portfolioGrid.innerHTML = '';
@@ -58,6 +58,10 @@ async function loadPortfolioItems() {
     });
   } catch (error) {
     console.error('Error loading portfolio items:', error);
+    const portfolioGrid = document.getElementById('portfolioGrid');
+    if (portfolioGrid) {
+      portfolioGrid.innerHTML = `<div class="error-message">Unable to load portfolio items. ${error.message}</div>`;
+    }
   }
 }
 
