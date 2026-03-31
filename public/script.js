@@ -8,6 +8,10 @@ if (
   window.location.port === '3000'
 ) {
   API_URL = 'http://localhost:5000';
+  const warning = document.createElement('div');
+  warning.style = 'background:#ffeb3b;color:#000;padding:10px;margin:10px;border:2px solid #f57c00;font-weight:bold';
+  warning.textContent = '⚠️ Running on Live Server (5500/3000). API will be proxied to localhost:5000 automatically.';
+  document.body.prepend(warning);
 }
 
 console.log('API_URL set to:', API_URL); // Debug: should be http://localhost:5000 for local dev, empty for deploy
