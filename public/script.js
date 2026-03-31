@@ -1,14 +1,16 @@
-// API base URL - Use relative paths for both local and production
-// In production (Render), this becomes: https://your-app.onrender.com/api/...
-// In local dev (localhost:5000), this becomes: http://localhost:5000/api/...
-const API_URL = '';
+// API base URL - PERMANENT FIX
+// For local development: ALWAYS use http://localhost:5000
+// For production (Render): uses /api/ relative paths
+let API_URL = '/api';
 
-// Only use localhost:5000 if explicitly running locally
+// If running locally, use explicit backend URL
 if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-  if (window.location.port === '5500') {
-    // Live Server case - redirect to backend
-    // Uncomment if needed: API_URL = 'http://localhost:5000';
-  }
+  API_URL = 'http://localhost:5000/api';
+}
+
+// If on Live Server port 5500, redirect to backend
+if (window.location.port === '5500' || window.location.port === '3000') {
+  API_URL = 'http://localhost:5000/api';
 }
 
 const fallbackSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="#f0f0f0"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#555" font-size="24">No Image</text></svg>`;
