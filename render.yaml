@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: portfolio-app
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: PORT
+        value: 10000
+        sync: false
